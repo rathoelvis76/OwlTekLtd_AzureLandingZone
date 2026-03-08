@@ -1,42 +1,98 @@
-name: Terraform Azure Deployment
+name: Terraform Landing Zones
 
 on:
   push:
     branches:
-    - main
+      - main
 
 permissions:
   id-token: write
   contents: read
 
 jobs:
-  terraform:
+
+  deploy-dev:
 
     runs-on: ubuntu-latest
 
+    defaults:
+      run:
+        working-directory: terraform/landingzones
+
     steps:
 
-    - name: Checkout Repo
-      uses: actions/checkout@v3
+      - name: Checkout
+        uses: actions/checkout@v3
 
-    - name: Azure Login
-      uses: azure/login@v1
-      with:
-        client-id: ${{ secrets.ARM_CLIENT_ID }}
-        tenant-id: ${{ secrets.ARM_TENANT_ID }}
-        subscription-id: ${{ secrets.ARM_SUBSCRIPTION_ID }}
-        
-    - name: Setup Terraform
-      uses: hashicorp/setup-terraform@v2
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          client-id: ${{ secrets.ARM_CLIENT_ID }}
+          tenant-id: ${{ secrets.ARM_TENANT_ID }}
+          subscription-id: ${{ secrets.ARM_SUBSCRIPTION_ID }}
 
-    - name: Terraform Init
-      run: terraform init
-      working-directory: terraform
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
 
-    - name: Terraform Plan
-      run: terraform plan
-      working-directory: terraform
+      - name: Terraform Init
+        run: terraform init -reconfigure -backend-config="key=landingzones-dev.tfstate"
 
-    - name: Terraform Apply
-      run: terraform apply -auto-approve
-      working-directory: terraform
+      - name: Terraform Plan
+        run: terraform plan -var-file="environments/development.tfvars"
+
+      - name: Terraform Apply
+        run: terraform apply -auto-approve -var-file="environments/development.tfvars"
+
+  deploy-staging:
+
+    needs: deploy-dev
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: terraform/landingzones
+
+    steps:
+
+      - uses: actions/checkout@v3
+
+      - uses: hashicorp/setup-terraform@v2
+
+      - uses: azure/login@v1
+        with:
+          client-id: ${{ secrets.ARM_CLIENT_ID }}
+          tenant-id: ${{ secrets.ARM_TENANT_ID }}
+          subscription-id: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+
+      - run: terraform init -reconfigure -backend-config="key=landingzones-staging.tfstate"
+
+      - run: terraform plan -var-file="environments/staging.tfvars"
+
+      - run: terraform apply -auto-approve -var-file="environments/staging.tfvars"
+
+  deploy-prod:
+
+    needs: deploy-staging
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: terraform/landingzones
+
+    steps:
+
+      - uses: actions/checkout@v3
+
+      - uses: hashicorp/setup-terraform@v2
+
+      - uses: azure/login@v1
+        with:
+          client-id: ${{ secrets.ARM_CLIENT_ID }}
+          tenant-id: ${{ secrets.ARM_TENANT_ID }}
+          subscription-id: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+
+      - run: terraform init -reconfigure -backend-config="key=landingzones-prod.tfstate"
+
+      - run: terraform plan -var-file="environments/production.tfvars"
+
+      - run: terraform apply -auto-approve -var-file="environments/production.tfvars"
